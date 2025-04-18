@@ -45,11 +45,19 @@ def random_seed(seed=42, rank=0):
     torch.manual_seed(seed + rank)
     np.random.seed(seed + rank)
     random.seed(seed + rank)
+'''
+随机种子类型	        影响的场景示例
+torch.manual_seed()	    模型参数初始化、Dropout、DataLoader打乱数据、torch.rand()生成的随机数。
+np.random.seed()	    NumPy参与的数据增强（如随机裁剪）、np.random.rand()等。
+random.seed()	        Python原生随机操作（如random.shuffle()）、某些第三方库的随机逻辑。
+'''
 
 
-def natural_key(string_):
+def natural_key(string_): # 进行自然排序以符合人类直观排序方法
     """See http://www.codinghorror.com/blog/archives/001018.html"""
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_.lower())]
+    # re.split(r'(\d+)', ...) 使用正则表达式 (\d+) 拆分字符串，捕获连续数字作为单独分组。
+    # 示例："file123abc45" → 拆分为 ["file", "123", "abc", "45", ""]。捕获连续数字组
 
 
 def get_latest_checkpoint(path: str, remote : bool):
@@ -76,7 +84,7 @@ def main(args):
         # float16 and almost as accurate as float32
         # This was a default in pytorch until 1.12
         torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.benchmark = True                                                                     ！！！
         torch.backends.cudnn.deterministic = False
 
     # fully initialize distributed device environment
@@ -88,9 +96,9 @@ def main(args):
         model_name_safe = args.model.replace('/', '-')
         date_str = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
         if args.distributed:
-            # sync date_str from master to all ranks
+            # sync（同步） date_str from master to all ranks
             date_str = broadcast_object(args, date_str)
-        args.name = '-'.join([
+        args.name = '-'.join([                 # '-'来连接列表内的对象，例如"2023_10_25-14_30_45-model_openai-clip-vit-base-patch32-lr_0.001-b_64-j_4-p_bf16"
             date_str,
             f"model_{model_name_safe}",
             f"lr_{args.lr}",
@@ -307,70 +315,71 @@ def main(args):
     optimizer = None
     scaler = None
 
-    if args.train_data or args.dataset_type == "synthetic":
-        assert not args.trace, 'Cannot train with traced model'
+    # 到383不需要看
+    # if args.train_data or args.dataset_type == "synthetic":
+    #     assert not args.trace, 'Cannot train with traced model'
 
-        opt = getattr(args, 'opt', 'adamw').lower()
-        if opt.startswith('timm/'):
-            from timm.optim import create_optimizer_v2
-            timm_opt = opt.split('timm/')[-1]
-            opt_kwargs = {}
-            assert (args.beta1 is None) == (args.beta2 is None), \
-                'When using timm optimizer, BOTH beta1 and beta2 must be specified (or not specified).'
-            if args.beta1 is not None:
-                opt_kwargs['betas'] = (args.beta1, args.beta2)
-            if args.momentum is not None:
-                opt_kwargs['momentum'] = args.momentum
-            optimizer = create_optimizer_v2(
-                model,
-                timm_opt,
-                lr=args.lr,
-                weight_decay=args.wd,
-                eps=args.eps,
-                **opt_kwargs,
-            )
-        else:
-            # If some params are not passed, we use the default values based on model name.
-            exclude = lambda n, p: p.ndim < 2 or "bn" in n or "ln" in n or "bias" in n or 'logit_scale' in n
-            include = lambda n, p: not exclude(n, p)
+    #     opt = getattr(args, 'opt', 'adamw').lower()
+    #     if opt.startswith('timm/'):
+    #         from timm.optim import create_optimizer_v2
+    #         timm_opt = opt.split('timm/')[-1]
+    #         opt_kwargs = {}
+    #         assert (args.beta1 is None) == (args.beta2 is None), \
+    #             'When using timm optimizer, BOTH beta1 and beta2 must be specified (or not specified).'
+    #         if args.beta1 is not None:
+    #             opt_kwargs['betas'] = (args.beta1, args.beta2)
+    #         if args.momentum is not None:
+    #             opt_kwargs['momentum'] = args.momentum
+    #         optimizer = create_optimizer_v2(
+    #             model,
+    #             timm_opt,
+    #             lr=args.lr,
+    #             weight_decay=args.wd,
+    #             eps=args.eps,
+    #             **opt_kwargs,
+    #         )
+    #     else:
+    #         # If some params are not passed, we use the default values based on model name.
+    #         exclude = lambda n, p: p.ndim < 2 or "bn" in n or "ln" in n or "bias" in n or 'logit_scale' in n
+    #         include = lambda n, p: not exclude(n, p)
 
-            named_parameters = list(model.named_parameters())
-            gain_or_bias_params = [p for n, p in named_parameters if exclude(n, p) and p.requires_grad]
-            rest_params = [p for n, p in named_parameters if include(n, p) and p.requires_grad]
+    #         named_parameters = list(model.named_parameters())
+    #         gain_or_bias_params = [p for n, p in named_parameters if exclude(n, p) and p.requires_grad]
+    #         rest_params = [p for n, p in named_parameters if include(n, p) and p.requires_grad]
 
-            if opt == 'adamw':
-                optimizer = optim.AdamW(
-                    [
-                        {"params": gain_or_bias_params, "weight_decay": 0.},
-                        {"params": rest_params, "weight_decay": args.wd},
-                    ],
-                    lr=args.lr,
-                    betas=(args.beta1, args.beta2),
-                    eps=args.eps,
-                )
-            else:
-                assert False, f'Unknown optimizer {opt}'
+    #         if opt == 'adamw':
+    #             optimizer = optim.AdamW(
+    #                 [
+    #                     {"params": gain_or_bias_params, "weight_decay": 0.},
+    #                     {"params": rest_params, "weight_decay": args.wd},
+    #                 ],
+    #                 lr=args.lr,
+    #                 betas=(args.beta1, args.beta2),
+    #                 eps=args.eps,
+    #             )
+    #         else:
+    #             assert False, f'Unknown optimizer {opt}'
 
-        if is_master(args):
-            if is_master(args):
-                defaults = copy.deepcopy(optimizer.defaults)
-                defaults['weight_decay'] = args.wd
-                defaults = ', '.join([f'{k}: {v}' for k, v in defaults.items()])
-                logging.info(
-                    f'Created {type(optimizer).__name__} ({args.opt}) optimizer: {defaults}'
-                )
+    #     if is_master(args):
+    #         if is_master(args):
+    #             defaults = copy.deepcopy(optimizer.defaults)
+    #             defaults['weight_decay'] = args.wd
+    #             defaults = ', '.join([f'{k}: {v}' for k, v in defaults.items()])
+    #             logging.info(
+    #                 f'Created {type(optimizer).__name__} ({args.opt}) optimizer: {defaults}'
+    #             )
 
-        if args.horovod:
-            optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-            hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-            hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+    #     if args.horovod:
+    #         optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+    #         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    #         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
-        scaler = None
-        if args.precision == "amp":
-            try:
-                scaler = torch.amp.GradScaler(device=device)
-            except (AttributeError, TypeError) as e:
-                scaler = torch.cuda.amp.GradScaler()
+    #     scaler = None
+    #     if args.precision == "amp":
+    #         try:
+    #             scaler = torch.amp.GradScaler(device=device)
+    #         except (AttributeError, TypeError) as e:
+    #             scaler = torch.cuda.amp.GradScaler()
 
     # optionally resume from a checkpoint
     start_epoch = 0
